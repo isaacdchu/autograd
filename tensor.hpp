@@ -241,14 +241,12 @@ public:
         for (const std::weak_ptr<Tensor>& succ_weak : successors_) {
             std::shared_ptr<Tensor> succ = succ_weak.lock();
             if (!succ) {
-                std::cout << "Warning: successor tensor no longer exists." << std::endl;
-                continue;
+                throw std::runtime_error("(Tensor::set_requires_grad) Successor tensor has been deallocated.");
             }
             for (Predecessor& pred : succ->predecessors_) {
                 std::shared_ptr<Tensor> pred_tensor = pred.tensor.lock();
                 if (!pred_tensor) {
-                    std::cout << "Warning: predecessor tensor no longer exists." << std::endl;
-                    continue;
+                    throw std::runtime_error("(Tensor::set_requires_grad) Predecessor tensor has been deallocated.");
                 }
                 if (pred_tensor.get() != this) {
                     continue;
@@ -289,14 +287,12 @@ public:
                 }
                 std::shared_ptr<Tensor> pred_tensor = pred.tensor.lock();
                 if (!pred_tensor) {
-                    continue;
+                    throw std::runtime_error("(Tensor::backward) Predecessor tensor has been deallocated.");
                 }
                 if (pred.gradients.empty()) {
-                    std::cout  << "YOU HAVE A BUG WITH YOUR gradient_initializer FUNCTION!" << std::endl;
+                    std::cerr << "YOU HAVE A BUG IN gradients_initializer FUNCTION!" << std::endl;
+                    throw std::runtime_error("(Tensor::backward) Predecessor gradients are not initialized.");
                 }
-                // for (std::size_t i = 0; i < tensor->gradients().size(); i++) {
-                //     pred_tensor->gradients_[i] += tensor->gradients().at(i) * pred.gradients.at(i);
-                // }
                 tensor->update_function_(pred_tensor->gradients_, tensor->gradients(), pred.gradients);
             }
         }
@@ -317,7 +313,7 @@ public:
                 }
                 std::shared_ptr<Tensor> pred_tensor = pred.tensor.lock();
                 if (!pred_tensor) {
-                    continue;
+                    throw std::runtime_error("(Tensor::zero_grad) Predecessor tensor has been deallocated.");
                 }
                 for (float& gradient : pred_tensor->gradients_) {
                     gradient = 0.0f;
