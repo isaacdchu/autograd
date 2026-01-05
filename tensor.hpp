@@ -46,7 +46,7 @@ private:
     std::function<void(std::vector<float>&, const std::vector<float>&, const std::vector<float>&)> update_function_;
 
     void add_predecessor(
-        std::shared_ptr<Tensor>& tensor,
+        std::shared_ptr<Tensor> tensor,
         const std::vector<float>& gradients,
         bool requires_grad,
         std::function<std::vector<float>()> gradient_initializer,

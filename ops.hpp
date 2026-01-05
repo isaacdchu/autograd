@@ -14,7 +14,7 @@
 
 class Ops {
 public:
-    static std::shared_ptr<Tensor> add(std::shared_ptr<Tensor>& a, std::shared_ptr<Tensor>& b) {
+    static std::shared_ptr<Tensor> add(std::shared_ptr<Tensor> a, std::shared_ptr<Tensor> b) {
         if (!Tensor::vectors_are_equal(a->shape(), b->shape())) {
             throw std::invalid_argument("(Ops::add) Tensors must have the same shape for addition.");
         }
@@ -41,11 +41,8 @@ public:
         result->add_predecessor(b, grad_b, b->requires_grad(), grad_b_initializer);
         result->forward_function_ = [](std::vector<float>& values, const std::vector<Predecessor>& preds) {
             const std::shared_ptr<Tensor> a = preds.at(0).tensor.lock();
-            if (!a) {
-                throw std::runtime_error("(Ops::add) Predecessor tensor has been deallocated.");
-            }
             const std::shared_ptr<Tensor> b = preds.at(1).tensor.lock();
-            if (!b) {
+            if (!a || !b) {
                 throw std::runtime_error("(Ops::add) Predecessor tensor has been deallocated.");
             }
             for (std::size_t i = 0; i < values.size(); i++) {
@@ -55,7 +52,7 @@ public:
         return result;
     }
 
-    static std::shared_ptr<Tensor> element_wise_multiply(std::shared_ptr<Tensor>& a, std::shared_ptr<Tensor>& b) {
+    static std::shared_ptr<Tensor> element_wise_multiply(std::shared_ptr<Tensor> a, std::shared_ptr<Tensor> b) {
         if (!Tensor::vectors_are_equal(a->shape(), b->shape())) {
             throw std::invalid_argument("(Ops::element_wise_multiply) Tensors must have the same shape for element-wise multiplication.");
         }
@@ -90,11 +87,8 @@ public:
         result->add_predecessor(b, grad_b, b->requires_grad(), grad_b_initializer);
         result->forward_function_ = [](std::vector<float>& values, const std::vector<Predecessor>& preds) {
             const std::shared_ptr<Tensor> a = preds.at(0).tensor.lock();
-            if (!a) {
-                throw std::runtime_error("(Ops::element_wise_multiply) Predecessor tensor has been deallocated.");
-            }
             const std::shared_ptr<Tensor> b = preds.at(1).tensor.lock();
-            if (!b) {
+            if (!a || !b) {
                 throw std::runtime_error("(Ops::element_wise_multiply) Predecessor tensor has been deallocated.");
             }
             for (std::size_t i = 0; i < values.size(); i++) {
@@ -104,7 +98,7 @@ public:
         return result;
     }
 
-    static std::shared_ptr<Tensor> scale(std::shared_ptr<Tensor>& tensor, float scalar) {
+    static std::shared_ptr<Tensor> scale(std::shared_ptr<Tensor> tensor, float scalar) {
         if (std::isnan(scalar) || std::isinf(scalar)) {
             throw std::invalid_argument("(Ops::scale) Scalar value must be a valid finite number.");
         }
@@ -133,7 +127,7 @@ public:
         return result;
     }
 
-    static std::shared_ptr<Tensor> transpose(std::shared_ptr<Tensor>& tensor, std::size_t dim_1 = 0, std::size_t dim_2 = 1) {
+    static std::shared_ptr<Tensor> transpose(std::shared_ptr<Tensor> tensor, std::size_t dim_1 = 0, std::size_t dim_2 = 1) {
         if (dim_1 >= tensor->ndim() || dim_2 >= tensor->ndim()) {
             throw std::invalid_argument("(Ops::transpose) Dimension indices are out of bounds.");
         }
