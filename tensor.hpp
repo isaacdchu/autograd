@@ -43,15 +43,20 @@ private:
     std::vector<std::weak_ptr<Tensor>> successors_;
     std::vector<std::shared_ptr<Tensor>> backward_list_;
     std::function<void(std::vector<float>&, const std::vector<Predecessor>&)> forward_function_;
+    std::function<void(std::vector<float>&, const std::vector<float>&, const std::vector<float>&)> update_function_;
 
     void add_predecessor(
         std::shared_ptr<Tensor>& tensor,
         const std::vector<float>& gradients,
         bool requires_grad,
-        std::function<std::vector<float>()> gradient_initializer
+        std::function<std::vector<float>()> gradient_initializer,
+        std::function<void(std::vector<float>&, const std::vector<float>&, const std::vector<float>&)> update_function = nullptr
     ) {
         predecessors_.emplace_back(tensor, gradients, requires_grad, gradient_initializer);
         tensor->successors_.emplace_back(shared_from_this());
+        if (update_function) {
+            update_function_ = update_function;
+        }
     }
 
     void compute_size() {
@@ -101,6 +106,16 @@ private:
         // Default forward function does nothing
     }
 
+    void default_update_function(
+        std::vector<float>& pred_tensor_gradients,
+        const std::vector<float>& current_gradients,
+        const std::vector<float>& pred_struct_gradients
+    ) const {
+        for (std::size_t i = 0; i < current_gradients.size(); i++) {
+            pred_tensor_gradients.at(i) += current_gradients.at(i) * pred_struct_gradients.at(i);
+        }
+    }
+
     static bool vectors_are_equal(const std::vector<std::size_t>& a, const std::vector<std::size_t>& b) {
         if (a.size() != b.size()) {
             return false;
@@ -125,6 +140,7 @@ public:
         }
         ndim_ = shape.size();
         forward_function_ = std::bind(&Tensor::default_forward_function, this, std::placeholders::_1, std::placeholders::_2);
+        update_function_ = std::bind(&Tensor::default_update_function, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
     }
 
     Tensor(const std::vector<std::size_t>& shape, const std::vector<float>& init_data, bool requires_grad = true)
@@ -140,6 +156,7 @@ public:
         }
         ndim_ = shape.size();
         forward_function_ = std::bind(&Tensor::default_forward_function, this, std::placeholders::_1, std::placeholders::_2);
+        update_function_ = std::bind(&Tensor::default_update_function, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
     }
 
     float operator()(const std::vector<std::size_t>& indices) const {
@@ -277,9 +294,10 @@ public:
                 if (pred.gradients.empty()) {
                     std::cout  << "YOU HAVE A BUG WITH YOUR gradient_initializer FUNCTION!" << std::endl;
                 }
-                for (std::size_t i = 0; i < tensor->gradients().size(); i++) {
-                    pred_tensor->gradients_[i] += tensor->gradients().at(i) * pred.gradients.at(i);
-                }
+                // for (std::size_t i = 0; i < tensor->gradients().size(); i++) {
+                //     pred_tensor->gradients_[i] += tensor->gradients().at(i) * pred.gradients.at(i);
+                // }
+                tensor->update_function_(pred_tensor->gradients_, tensor->gradients(), pred.gradients);
             }
         }
     }
