@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <functional>
+#include <iostream>
 #include <memory>
 #include <vector>
 #include <stdexcept>
@@ -139,7 +140,7 @@ public:
         std::vector<std::size_t> new_shape = tensor->shape();
         std::swap(new_shape[dim_1], new_shape[dim_2]);
         std::shared_ptr<Tensor> result = std::make_shared<Tensor>(new_shape, 0.0f, tensor->requires_grad());
-        std::vector<float> gradients(result->size());
+        
         for (std::size_t i = 0; i < tensor->size(); i++) {
             std::vector<std::size_t> original_indices(tensor->ndim());
             std::size_t remainder = i;
@@ -152,31 +153,42 @@ public:
             for (std::size_t d = 0; d < tensor->ndim(); d++) {
                 new_index += original_indices[d] * result->strides()[d];
             }
-            result->values_[new_index] = tensor->values_[i];
-            gradients[new_index] = tensor->gradients_[i];
+            result->values_[new_index] = tensor->values()[i];
         }
-        result->add_predecessor(tensor, gradients, tensor->requires_grad(), [tensor_weak = std::weak_ptr<Tensor>(tensor), new_strides = tensor->strides(), dim_1, dim_2]() {
-            std::shared_ptr<Tensor> tensor= tensor_weak.lock();
-            if (!tensor) {
-                throw std::runtime_error("(Ops::transpose) Predecessor tensor has been deallocated.");
-            }
-            std::vector<float> gradients(tensor->size());
-            for (std::size_t i = 0; i < tensor->size(); i++) {
-                std::vector<std::size_t> original_indices(tensor->ndim());
-                std::size_t remainder = i;
-                for (std::size_t d = 0; d < tensor->ndim(); d++) {
-                    original_indices[d] = remainder / tensor->strides()[d];
-                    remainder = remainder % tensor->strides()[d];
+        std::vector<float> gradients(result->size(), 1.0f);
+        result->add_predecessor(
+            tensor,
+            gradients,
+            tensor->requires_grad(),
+            [size = tensor->size()]() {
+                return std::vector<float>(size, 1.0f);
+            },
+            [tensor_weak = std::weak_ptr<Tensor>(tensor), new_strides = result->strides(), dim_1, dim_2](
+                std::vector<float>& pred_tensor_gradients,
+                const std::vector<float>& current_gradients,
+                const std::vector<float>& pred_struct_gradients
+            ) -> void {
+                std::shared_ptr<Tensor> tensor = tensor_weak.lock();
+                if (!tensor) {
+                    throw std::runtime_error("(Ops::transpose) Predecessor tensor has been deallocated.");
                 }
-                std::swap(original_indices[dim_1], original_indices[dim_2]);
-                std::size_t new_index = 0;
-                for (std::size_t d = 0; d < tensor->ndim(); d++) {
-                    new_index += original_indices[d] * new_strides[d];
+                for (std::size_t i = 0; i < current_gradients.size(); i++) {
+                    std::vector<std::size_t> transposed_indices(tensor->ndim());
+                    std::size_t remainder = i;
+                    for (std::size_t d = 0; d < tensor->ndim(); d++) {
+                        transposed_indices[d] = remainder / new_strides[d];
+                        remainder = remainder % new_strides[d];
+                    }
+                    std::swap(transposed_indices[dim_1], transposed_indices[dim_2]);
+                    std::size_t original_index = 0;
+                    for (std::size_t d = 0; d < tensor->ndim(); d++) {
+                        original_index += transposed_indices[d] * tensor->strides()[d];
+                    }
+                    pred_tensor_gradients.at(original_index) += current_gradients.at(i);
+                    // "* pred_struct_gradients.at(i)" is equivalent to "* 1", so omitted
                 }
-                gradients[i] = tensor->gradients()[new_index];
             }
-            return gradients;
-        });
+        );
         result->forward_function_ = [new_strides = result->strides(), dim_1, dim_2](std::vector<float>& values, const std::vector<Predecessor>& preds) {
             const std::shared_ptr<Tensor> tensor = preds.at(0).tensor.lock();
             if (!tensor) {
