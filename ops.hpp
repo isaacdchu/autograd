@@ -7,6 +7,7 @@
 #include <memory>
 #include <vector>
 #include <stdexcept>
+#include <cmath>
 #include <cstddef>
 
 class Ops {
@@ -90,6 +91,9 @@ public:
     }
 
     static std::shared_ptr<Tensor> scale(std::shared_ptr<Tensor>& tensor, float scalar) {
+        if (std::isnan(scalar) || std::isinf(scalar)) {
+            throw std::invalid_argument("(Ops::scale) Scalar value must be a valid finite number.");
+        }
         std::vector<float> result_data(tensor->size());
         for (std::size_t i = 0; i < result_data.size(); i++) {
             result_data[i] = tensor->values_[i] * scalar;
