@@ -104,25 +104,53 @@ bool test_scale() {
 }
 
 bool test_invalid_scale() {
+    bool result_1 = false;
+    bool result_2 = false;
     try {
         std::shared_ptr<Tensor> tensor_a = std::make_shared<Tensor>(std::vector<std::size_t>{2, 3}, 1.0f, true);
         float scale_factor = std::nanf("");
         std::shared_ptr<Tensor> tensor_b = Ops::scale(tensor_a, scale_factor);
     } catch (const std::invalid_argument& e) {
-        return true; // Exception was thrown as expected
+        // Exception was thrown as expected
+        result_1 = true;
     }
-    return false; // No exception thrown, test failed
+    try {
+        std::shared_ptr<Tensor> tensor_a = std::make_shared<Tensor>(std::vector<std::size_t>{2, 3}, 1.0f, true);
+        float scale_factor = std::numeric_limits<float>::infinity();
+        std::shared_ptr<Tensor> tensor_b = Ops::scale(tensor_a, scale_factor);
+    } catch (const std::invalid_argument& e) {
+        // Exception was thrown as expected
+        result_2 = true;
+    }
+    return result_1 && result_2;
+}
+
+bool test_transpose() {
+    std::shared_ptr<Tensor> tensor_a = std::make_shared<Tensor>(std::vector<std::size_t>{2, 3}, std::vector<float>{1, 2, 3, 4, 5, 6}, true);
+    std::shared_ptr<Tensor> tensor_b = Ops::transpose(tensor_a, 0, 1);
+    std::vector<float> expected_values = {1, 4, 2, 5, 3, 6};
+    for (std::size_t i = 0; i < tensor_b->size(); i++) {
+        if (tensor_b->values()[i] != expected_values[i]) {
+            return false;
+        }
+    }
+    if (tensor_b->shape() != std::vector<std::size_t>{3, 2}) {
+        return false;
+    }
+    return true;
 }
 
 int main() {
     std::vector<std::pair<std::string, bool (*)()>> tests = {
         {"Tensor Creation Test", test_tensor_creation},
+        {"Invalid Tensor Creation Test", test_invalid_tensor_creation},
         {"Addition Test", test_addition},
         {"Invalid Addition Test", test_invalid_addition},
         {"Element-wise Multiplication Test", test_element_wise_multiply},
         {"Invalid Element-wise Multiplication Test", test_invalid_element_wise_multiply},
         {"Scaling Test", test_scale},
-        {"Invalid Scaling Test", test_invalid_scale}
+        {"Invalid Scaling Test", test_invalid_scale},
+        {"Transpose Test", test_transpose},
     };
     for (const auto& [test_name, test_func] : tests) {
         bool result = test_func();

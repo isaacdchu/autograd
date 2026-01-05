@@ -3,6 +3,7 @@
 
 #include "tensor.hpp"
 
+#include <algorithm>
 #include <functional>
 #include <memory>
 #include <vector>
@@ -39,7 +40,13 @@ public:
         result->add_predecessor(b, grad_b, b->requires_grad(), grad_b_initializer);
         result->forward_function_ = [](std::vector<float>& values, const std::vector<Predecessor>& preds) {
             const std::shared_ptr<Tensor> a = preds.at(0).tensor.lock();
+            if (!a) {
+                throw std::runtime_error("(Ops::add) Predecessor tensor has been deallocated.");
+            }
             const std::shared_ptr<Tensor> b = preds.at(1).tensor.lock();
+            if (!b) {
+                throw std::runtime_error("(Ops::add) Predecessor tensor has been deallocated.");
+            }
             for (std::size_t i = 0; i < values.size(); i++) {
                 values[i] = a->values_[i] + b->values_[i];
             }
@@ -82,7 +89,13 @@ public:
         result->add_predecessor(b, grad_b, b->requires_grad(), grad_b_initializer);
         result->forward_function_ = [](std::vector<float>& values, const std::vector<Predecessor>& preds) {
             const std::shared_ptr<Tensor> a = preds.at(0).tensor.lock();
+            if (!a) {
+                throw std::runtime_error("(Ops::element_wise_multiply) Predecessor tensor has been deallocated.");
+            }
             const std::shared_ptr<Tensor> b = preds.at(1).tensor.lock();
+            if (!b) {
+                throw std::runtime_error("(Ops::element_wise_multiply) Predecessor tensor has been deallocated.");
+            }
             for (std::size_t i = 0; i < values.size(); i++) {
                 values[i] = a->values()[i] * b->values()[i];
             }
@@ -109,8 +122,79 @@ public:
         result->add_predecessor(tensor, gradients, tensor->requires_grad(), grad_initializer);
         result->forward_function_ = [scalar](std::vector<float>& values, const std::vector<Predecessor>& preds) {
             const std::shared_ptr<Tensor> tensor = preds.at(0).tensor.lock();
+            if (!tensor) {
+                throw std::runtime_error("(Ops::scale) Predecessor tensor has been deallocated.");
+            }
             for (std::size_t i = 0; i < values.size(); i++) {
                 values[i] = tensor->values()[i] * scalar;
+            }
+        };
+        return result;
+    }
+
+    static std::shared_ptr<Tensor> transpose(std::shared_ptr<Tensor>& tensor, std::size_t dim_1 = 0, std::size_t dim_2 = 1) {
+        if (dim_1 >= tensor->ndim() || dim_2 >= tensor->ndim()) {
+            throw std::invalid_argument("(Ops::transpose) Dimension indices are out of bounds.");
+        }
+        std::vector<std::size_t> new_shape = tensor->shape();
+        std::swap(new_shape[dim_1], new_shape[dim_2]);
+        std::shared_ptr<Tensor> result = std::make_shared<Tensor>(new_shape, 0.0f, tensor->requires_grad());
+        std::vector<float> gradients(result->size());
+        for (std::size_t i = 0; i < tensor->size(); i++) {
+            std::vector<std::size_t> original_indices(tensor->ndim());
+            std::size_t remainder = i;
+            for (std::size_t d = 0; d < tensor->ndim(); d++) {
+                original_indices[d] = remainder / tensor->strides()[d];
+                remainder = remainder % tensor->strides()[d];
+            }
+            std::swap(original_indices[dim_1], original_indices[dim_2]);
+            std::size_t new_index = 0;
+            for (std::size_t d = 0; d < tensor->ndim(); d++) {
+                new_index += original_indices[d] * result->strides()[d];
+            }
+            result->values_[new_index] = tensor->values_[i];
+            gradients[new_index] = tensor->gradients_[i];
+        }
+        result->add_predecessor(tensor, gradients, tensor->requires_grad(), [tensor_weak = std::weak_ptr<Tensor>(tensor), new_strides = tensor->strides(), dim_1, dim_2]() {
+            std::shared_ptr<Tensor> tensor= tensor_weak.lock();
+            if (!tensor) {
+                throw std::runtime_error("(Ops::transpose) Predecessor tensor has been deallocated.");
+            }
+            std::vector<float> gradients(tensor->size());
+            for (std::size_t i = 0; i < tensor->size(); i++) {
+                std::vector<std::size_t> original_indices(tensor->ndim());
+                std::size_t remainder = i;
+                for (std::size_t d = 0; d < tensor->ndim(); d++) {
+                    original_indices[d] = remainder / tensor->strides()[d];
+                    remainder = remainder % tensor->strides()[d];
+                }
+                std::swap(original_indices[dim_1], original_indices[dim_2]);
+                std::size_t new_index = 0;
+                for (std::size_t d = 0; d < tensor->ndim(); d++) {
+                    new_index += original_indices[d] * new_strides[d];
+                }
+                gradients[i] = tensor->gradients()[new_index];
+            }
+            return gradients;
+        });
+        result->forward_function_ = [new_strides = result->strides(), dim_1, dim_2](std::vector<float>& values, const std::vector<Predecessor>& preds) {
+            const std::shared_ptr<Tensor> tensor = preds.at(0).tensor.lock();
+            if (!tensor) {
+                throw std::runtime_error("(Ops::transpose) Predecessor tensor has been deallocated.");
+            }
+            for (std::size_t i = 0; i < tensor->size(); i++) {
+                std::vector<std::size_t> original_indices(tensor->ndim());
+                std::size_t remainder = i;
+                for (std::size_t d = 0; d < tensor->ndim(); d++) {
+                    original_indices[d] = remainder / tensor->strides()[d];
+                    remainder = remainder % tensor->strides()[d];
+                }
+                std::swap(original_indices[dim_1], original_indices[dim_2]);
+                std::size_t new_index = 0;
+                for (std::size_t d = 0; d < tensor->ndim(); d++) {
+                    new_index += original_indices[d] * new_strides[d];
+                }
+                values[new_index] = tensor->values_[i];
             }
         };
         return result;

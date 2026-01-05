@@ -275,7 +275,7 @@ public:
                     continue;
                 }
                 if (pred.gradients.empty()) {
-                    std::cout  << "HEFDJFLKSDJFL:JFE" << std::endl;
+                    std::cout  << "YOU HAVE A BUG WITH YOUR gradient_initializer FUNCTION!" << std::endl;
                 }
                 for (std::size_t i = 0; i < tensor->gradients().size(); i++) {
                     pred_tensor->gradients_[i] += tensor->gradients().at(i) * pred.gradients.at(i);
@@ -326,6 +326,10 @@ public:
 
     const std::vector<float>& gradients() const {
         return gradients_;
+    }
+
+    const std::vector<std::size_t>& strides() const {
+        return strides_;
     }
 
     bool requires_grad() const {
