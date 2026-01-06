@@ -31,6 +31,7 @@ struct Predecessor {
 
 class Tensor : public std::enable_shared_from_this<Tensor> {
 friend class Ops;
+friend class Optimizer;
 private:
     std::vector<std::size_t> shape_;
     std::size_t ndim_;
@@ -180,6 +181,13 @@ public:
         values_ = vals;
     }
 
+    void set_values(std::vector<float>&& vals) {
+        if (vals.size() != size_) {
+            throw std::invalid_argument("Input size does not match tensor size.");
+        }
+        values_ = std::move(vals);
+    }
+
     void set_values(const Tensor& val_tensor) {
         if (val_tensor.values_.size() != size_) {
             throw std::invalid_argument("Input size does not match tensor size.");
@@ -202,6 +210,16 @@ public:
             throw std::invalid_argument("Gradient size does not match tensor size.");
         }
         gradients_ = grads;
+    }
+
+    void set_gradients(std::vector<float>&& grads) {
+        if (!requires_grad_) {
+            throw std::runtime_error("Cannot set gradients on a tensor that does not require gradients.");
+        }
+        if (grads.size() != size_) {
+            throw std::invalid_argument("Gradient size does not match tensor size.");
+        }
+        gradients_ = std::move(grads);
     }
 
     void set_gradients(const Tensor& grad_tensor) {
