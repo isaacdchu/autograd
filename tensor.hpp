@@ -64,7 +64,7 @@ private:
         size_ = 1;
         for (std::size_t dim : shape_) {
             if (dim <= 0) {
-                throw std::invalid_argument("Tensor dimensions must be positive.");
+                throw std::invalid_argument("(Tensor::compute_size) Tensor dimensions must be positive.");
             }
             size_ *= dim;
         }
@@ -87,7 +87,7 @@ private:
                 return;
             }
             if (temp_mark.contains(tensor)) {
-                throw std::runtime_error("Cycle detected in the computation graph.");
+                throw std::runtime_error("(Tensor::create_backward_list) Cycle detected in the computation graph.");
             }
 
             temp_mark.insert(tensor);
@@ -148,7 +148,7 @@ public:
         : shape_(shape), values_(init_data), requires_grad_(requires_grad), successors_() {
         compute_size();
         if (init_data.size() != size_) {
-            throw std::invalid_argument("Initial data size does not match tensor size.");
+            throw std::invalid_argument("(Tensor Constructor) Initial data size does not match tensor size.");
         }
         strides_.resize(shape.size());
         compute_strides(shape);
@@ -162,82 +162,82 @@ public:
 
     float operator()(const std::vector<std::size_t>& indices) const {
         if (indices.size() != ndim_) {
-            throw std::invalid_argument("Number of indices must match tensor dimensions.");
+            throw std::invalid_argument("(Tensor::operator()) Number of indices must match tensor dimensions.");
         }
         std::size_t flat_index = 0;
         for (std::size_t i = 0; i < ndim_; ++i) {
             flat_index += indices[i] * strides_[i];
         }
         if (flat_index >= values_.size()) {
-            throw std::out_of_range("Index out of bounds.");
+            throw std::out_of_range("(Tensor::operator()) Index out of bounds.");
         }
         return values_[flat_index];
     }
 
     void set_values(const std::vector<float>& vals) {
         if (vals.size() != size_) {
-            throw std::invalid_argument("Input size does not match tensor size.");
+            throw std::invalid_argument("(Tensor::set_values) Input size does not match tensor size.");
         }
         values_ = vals;
     }
 
     void set_values(std::vector<float>&& vals) {
         if (vals.size() != size_) {
-            throw std::invalid_argument("Input size does not match tensor size.");
+            throw std::invalid_argument("(Tensor::set_values) Input size does not match tensor size.");
         }
         values_ = std::move(vals);
     }
 
     void set_values(const Tensor& val_tensor) {
         if (val_tensor.values_.size() != size_) {
-            throw std::invalid_argument("Input size does not match tensor size.");
+            throw std::invalid_argument("(Tensor::set_values) Input size does not match tensor size.");
         }
         values_ = val_tensor.values();
     }
 
     void set_values(const std::shared_ptr<Tensor>& val_tensor) {
         if (val_tensor->values_.size() != size_) {
-            throw std::invalid_argument("Input size does not match tensor size.");
+            throw std::invalid_argument("(Tensor::set_values) Input size does not match tensor size.");
         }
         values_ = val_tensor->values();
     }
 
     void set_gradients(const std::vector<float>& grads) {
         if (!requires_grad_) {
-            throw std::runtime_error("Cannot set gradients on a tensor that does not require gradients.");
+            throw std::runtime_error("(Tensor::set_gradients) Cannot set gradients on a tensor that does not require gradients.");
         }
         if (grads.size() != size_) {
-            throw std::invalid_argument("Gradient size does not match tensor size.");
+            throw std::invalid_argument("(Tensor::set_gradients) Gradient size does not match tensor size.");
         }
         gradients_ = grads;
     }
 
     void set_gradients(std::vector<float>&& grads) {
         if (!requires_grad_) {
-            throw std::runtime_error("Cannot set gradients on a tensor that does not require gradients.");
+            throw std::runtime_error("(Tensor::set_gradients) Cannot set gradients on a tensor that does not require gradients.");
         }
         if (grads.size() != size_) {
-            throw std::invalid_argument("Gradient size does not match tensor size.");
+            throw std::invalid_argument("(Tensor::set_gradients) Gradient size does not match tensor size.");
         }
         gradients_ = std::move(grads);
     }
 
     void set_gradients(const Tensor& grad_tensor) {
         if (!requires_grad_) {
-            throw std::runtime_error("Cannot set gradients on a tensor that does not require gradients.");
+            throw std::runtime_error("(Tensor::set_gradients) Cannot set gradients on a tensor that does not require gradients.");
         }
         if (vectors_are_equal(grad_tensor.shape_, shape_) == false) {
-            throw std::invalid_argument("Gradient shape does not match tensor shape.");
+            throw std::invalid_argument("(Tensor::set_gradients) Gradient shape does not match tensor shape.");
         }
         gradients_ = grad_tensor.values();
     }
 
     void set_gradients(const std::shared_ptr<Tensor>& grad_tensor) {
         if (!requires_grad_) {
-            throw std::runtime_error("Cannot set gradients on a tensor that does not require gradients.");
+            throw std::runtime_error("(Tensor::set_gradients) Cannot set gradients on a tensor that does not require gradients.");
         }
         if (vectors_are_equal(grad_tensor->shape_, shape_) == false) {
-            throw std::invalid_argument("Gradient shape does not match tensor shape.");
+            throw std::invalid_argument("(Tensor::set_gradients) Gradient shape does not match tensor shape.");
         }
         gradients_ = grad_tensor->values();
     }
@@ -292,7 +292,7 @@ public:
 
     void backward() {
         if (!requires_grad_) {
-            throw std::runtime_error("Cannot perform backward on a tensor that does not require gradients.");
+            throw std::runtime_error("(Tensor::backward) Cannot perform backward on a tensor that does not require gradients.");
         }
         if (backward_list_.empty()) {
             create_backward_list();
@@ -318,7 +318,7 @@ public:
 
     void zero_grad() {
         if (!requires_grad_) {
-            throw std::runtime_error("Cannot perform backward on a tensor that does not require gradients.");
+            throw std::runtime_error("(Tensor::zero_grad) Cannot perform zero_grad on a tensor that does not require gradients.");
         }
         gradients_.assign(size_, 0.0f);
         if (backward_list_.empty()) {
