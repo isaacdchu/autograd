@@ -6,6 +6,7 @@ Supports the following features:
 - Backward pass (update/accumulate gradients)
 - Zero grad (set gradients and preceding gradients to 0)
 - Togglable gradients (turn on/off gradient updates)
+- Optimizers (SGD, adam)
 
 # Usage
 - Compile `main.cpp`
