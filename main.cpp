@@ -24,7 +24,7 @@ int main() {
     std::cout << "Tensor D: " << tensor_d->to_string() << std::endl;
     std::cout << "Tensor E: " << tensor_e->to_string() << std::endl;
     optimizer->step();
-    std::cout << "After stepping SGD:" << std::endl;
+    std::cout << "After stepping optimizer:" << std::endl;
     std::cout << "Tensor A: " << tensor_a->to_string() << std::endl;
     std::cout << "Tensor B: " << tensor_b->to_string() << std::endl;
     std::cout << "Tensor C: " << tensor_c->to_string() << std::endl;
