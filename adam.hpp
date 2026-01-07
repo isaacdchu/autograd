@@ -4,6 +4,7 @@
 #include "optimizer.hpp"
 #include "tensor.hpp"
 
+#include <iostream>
 #include <memory>
 #include <vector>
 #include <stdexcept>
@@ -58,8 +59,11 @@ public:
             if (!param->requires_grad()) {
                 continue;
             }
-            const std::vector<float>& gradients = param->gradients();
             std::vector<float> values = param->values();
+            std::vector<float> gradients = param->gradients();
+            if (gradients.size() != values.size()) {
+                gradients.resize(values.size(), 0.0f);
+            }
             std::vector<float>& m = m_[idx];
             std::vector<float>& v = v_[idx];
             for (std::size_t i = 0; i < values.size(); i++) {

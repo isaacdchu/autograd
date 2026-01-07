@@ -32,6 +32,7 @@ struct Predecessor {
 class Tensor : public std::enable_shared_from_this<Tensor> {
 friend class Ops;
 friend class Optimizer;
+friend class Loss;
 private:
     std::vector<std::size_t> shape_;
     std::size_t ndim_;
@@ -136,9 +137,7 @@ public:
         strides_.resize(shape.size());
         compute_strides(shape);
         values_.resize(size_, init_value);
-        if (requires_grad_) {
-            gradients_.resize(size_, 0.0f);
-        }
+        gradients_ = std::vector<float>(size_);
         ndim_ = shape.size();
         forward_function_ = std::bind(&Tensor::default_forward_function, this, std::placeholders::_1, std::placeholders::_2);
         update_function_ = std::bind(&Tensor::default_update_function, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
@@ -152,9 +151,7 @@ public:
         }
         strides_.resize(shape.size());
         compute_strides(shape);
-        if (requires_grad_) {
-            gradients_.resize(size_, 0.0f);
-        }
+        gradients_ = std::vector<float>(size_);
         ndim_ = shape.size();
         forward_function_ = std::bind(&Tensor::default_forward_function, this, std::placeholders::_1, std::placeholders::_2);
         update_function_ = std::bind(&Tensor::default_update_function, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
@@ -311,6 +308,12 @@ public:
                     std::cerr << "YOU HAVE A BUG IN gradients_initializer FUNCTION!" << std::endl;
                     throw std::runtime_error("(Tensor::backward) Predecessor gradients are not initialized.");
                 }
+                if (pred_tensor->gradients_.size() != pred_tensor->size()) {
+                    pred_tensor->gradients_.resize(pred_tensor->size());
+                }
+                if (tensor->gradients_.size() != tensor->size_) {
+                    tensor->gradients_.resize(tensor->size_, 0.0f);
+                }
                 tensor->update_function_(pred_tensor->gradients_, tensor->gradients(), pred.gradients);
             }
         }
@@ -320,7 +323,7 @@ public:
         if (!requires_grad_) {
             throw std::runtime_error("(Tensor::zero_grad) Cannot perform zero_grad on a tensor that does not require gradients.");
         }
-        gradients_.assign(size_, 0.0f);
+        gradients_ = std::vector<float>(size_);
         if (backward_list_.empty()) {
             create_backward_list();
         }
@@ -333,9 +336,7 @@ public:
                 if (!pred_tensor) {
                     throw std::runtime_error("(Tensor::zero_grad) Predecessor tensor has been deallocated.");
                 }
-                for (float& gradient : pred_tensor->gradients_) {
-                    gradient = 0.0f;
-                }
+                pred_tensor->gradients_ = std::vector<float>();
             }
         }
     }

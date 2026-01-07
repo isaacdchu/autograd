@@ -26,8 +26,11 @@ public:
             if (!param->requires_grad()) {
                 continue;
             }
-            const std::vector<float>& gradients = param->gradients();
             std::vector<float> values = param->values();
+            std::vector<float> gradients = param->gradients();
+            if (values.size() != gradients.size()) {
+                gradients.resize(values.size(), 0.0f);
+            }
             for (std::size_t i = 0; i < values.size(); i++) {
                 values[i] -= learning_rate_ * gradients[i];
             }
