@@ -304,10 +304,10 @@ public:
                 if (!pred_tensor) {
                     throw std::runtime_error("(Tensor::backward) Predecessor tensor has been deallocated.");
                 }
-                if (pred.gradients.empty()) {
-                    std::cerr << "YOU HAVE A BUG IN gradients_initializer FUNCTION!" << std::endl;
-                    throw std::runtime_error("(Tensor::backward) Predecessor gradients are not initialized.");
-                }
+                // if (pred.gradients.empty()) {
+                //     std::cerr << "YOU HAVE A BUG IN gradients_initializer FUNCTION!" << std::endl;
+                //     throw std::runtime_error("(Tensor::backward) Predecessor gradients are not initialized.");
+                // }
                 if (pred_tensor->gradients_.size() != pred_tensor->size()) {
                     pred_tensor->gradients_.resize(pred_tensor->size());
                 }
@@ -397,6 +397,31 @@ public:
         }
         repr += "],\n\trequires_grad=" + std::string(requires_grad_ ? "true" : "false") + "\n)";
         return repr;
+    }
+
+    static std::size_t ravel_index(const std::vector<std::size_t>& indices, const std::vector<std::size_t>& shape) {
+        if (indices.size() != shape.size()) {
+            throw std::invalid_argument("(Tensor::ravel_index) Number of indices must match shape dimensions.");
+        }
+        std::size_t flat_index = 0;
+        std::size_t stride = 1;
+        for (std::size_t i = shape.size(); i-- > 0;) {
+            flat_index += indices[i] * stride;
+            stride *= shape[i];
+        }
+        if (flat_index >= stride) {
+            throw std::out_of_range("(Tensor::ravel_index) Index out of bounds.");
+        }
+        return flat_index;
+    }
+
+    static std::vector<std::size_t> unravel_index(std::size_t index, const std::vector<std::size_t>& shape) {
+        std::vector<std::size_t> indices(shape.size());
+        for (std::size_t i = shape.size(); i-- > 0;) {
+            indices[i] = index % shape[i];
+            index /= shape[i];
+        }
+        return indices;
     }
 };
 
