@@ -13,18 +13,21 @@
 #include <cstddef>
 
 int main() {
-    std::shared_ptr<Tensor> tensor_a = std::make_shared<Tensor>(std::vector<std::size_t>{2, 3}, std::vector<float>{1.0, 2.0, 3.0, 4.0, 5.0, 6.0}, true);
-    std::shared_ptr<Tensor> tensor_b = std::make_shared<Tensor>(std::vector<std::size_t>{3, 2}, 2.0f, true);
-    std::shared_ptr<Tensor> tensor_c = Ops::tensor_product(tensor_a, tensor_b);
-    // std::shared_ptr<Tensor> target = std::make_shared<Tensor>(std::vector<std::size_t>{2, 2}, 3.0f, false);
-    // std::shared_ptr<Tensor> loss = Loss::mse(tensor_c, target);
-    // loss->set_gradients(std::vector<float>{1.0f});
-    // loss->backward();
-    tensor_c->set_gradients(std::vector<float>(tensor_c->size(), 1.0f));
-    tensor_c->backward();
-    std::cout << "Tensor A: " << tensor_a->to_string() << std::endl;
-    std::cout << "Tensor B: " << tensor_b->to_string() << std::endl;
-    std::cout << "Tensor C: " << tensor_c->to_string() << std::endl;
-    // std::cout << "Loss: " << loss->to_string() << std::endl;
+    std::shared_ptr<Tensor> tensor_a1 = std::make_shared<Tensor>(std::vector<std::size_t>{2, 3}, std::vector<float>{1.0, 2.0, 3.0, 4.0, 5.0, 6.0}, true);
+    std::shared_ptr<Tensor> tensor_b1 = std::make_shared<Tensor>(std::vector<std::size_t>{3, 2}, 2.0f, true);
+    std::shared_ptr<Tensor> tensor_c1 = Ops::tensor_product(tensor_a1, tensor_b1);
+    tensor_c1->set_gradients(std::vector<float>(tensor_c1->size(), 1.0f));
+    tensor_c1->backward();
+    std::cout << "Tensor A1: " << tensor_a1->to_string() << std::endl;
+    std::cout << "Tensor B1: " << tensor_b1->to_string() << std::endl;
+    std::cout << "Tensor C1: " << tensor_c1->to_string() << std::endl;
+    std::shared_ptr<Tensor> tensor_a2 = std::make_shared<Tensor>(std::vector<std::size_t>{2, 3}, 2.0f, true);
+    std::shared_ptr<Tensor> tensor_b2 = std::make_shared<Tensor>(std::vector<std::size_t>{3, 2}, std::vector<float>{1.0, 2.0, 3.0, 4.0, 5.0, 6.0}, true);
+    std::shared_ptr<Tensor> tensor_c2 = Ops::tensor_product(tensor_a2, tensor_b2);
+    tensor_c2->set_gradients(std::vector<float>(tensor_c2->size(), 1.0f));
+    tensor_c2->backward();
+    std::cout << "Tensor A2: " << tensor_a2->to_string() << std::endl;
+    std::cout << "Tensor B2: " << tensor_b2->to_string() << std::endl;
+    std::cout << "Tensor C2: " << tensor_c2->to_string() << std::endl;
     return 0;
 }

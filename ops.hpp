@@ -261,26 +261,23 @@ public:
         };
         auto compute_a = [contractions, result_shape](
             const std::vector<std::size_t>& indices,
-            const std::vector<std::size_t>& shape,
             const std::vector<float>& current_gradients,
             const std::shared_ptr<Tensor>& other
         ) -> float {
             float sum = 0.0f;
             // compute the sum over non-contraction indices of b of (current_gradients * b tensor values)
             std::vector<std::size_t> k_indices(other->ndim() - contractions, 0);
-            std::vector<std::size_t> contraction_indices(indices.end() - contractions, indices.end());
-            std::vector<std::size_t> non_contraction_indices(indices.begin(), indices.end() - contractions);
             bool done = false;
             while (!done) {
-                std::vector<std::size_t> full_grad_indices(non_contraction_indices);
+                std::vector<std::size_t> full_grad_indices(indices.begin(), indices.end() - k_indices.size());
                 full_grad_indices.append_range(k_indices);
-                std::vector<std::size_t> full_other_indices(contraction_indices);
+                std::vector<std::size_t> full_other_indices(indices.end() - k_indices.size(), indices.end());
                 full_other_indices.append_range(k_indices);
                 std::size_t grad_flat_index = Tensor::ravel_index(full_grad_indices, result_shape);
-                sum += other->operator()(full_other_indices) * current_gradients[grad_flat_index];
+                sum += current_gradients[grad_flat_index] * other->operator()(full_other_indices);
                 for (int d = k_indices.size() - 1; d >= 0; d--) {
                     k_indices[d]++;
-                    if (k_indices[d] < other->shape()[d]) {
+                    if (k_indices[d] < other->shape()[d + contractions]) {
                         break;
                     } else if (d == 0) {
                         done = true;
@@ -293,7 +290,6 @@ public:
         };
         auto compute_b = [contractions, result_shape](
             const std::vector<std::size_t>& indices,
-            const std::vector<std::size_t>& shape,
             const std::vector<float>& current_gradients,
             const std::shared_ptr<Tensor>& other
         ) -> float {
@@ -336,7 +332,7 @@ public:
             }
             for (std::size_t i = 0; i < pred_tensor_gradients.size(); i++) {
                 std::vector<std::size_t> indices = Tensor::unravel_index(i, shape);
-                pred_tensor_gradients[i] += compute_a(indices, shape, current_gradients, b);
+                pred_tensor_gradients[i] += compute_a(indices, current_gradients, b);
             }
         };
         auto update_function_b = \
@@ -352,7 +348,7 @@ public:
             }
             for (std::size_t i = 0; i < pred_tensor_gradients.size(); i++) {
                 std::vector<std::size_t> indices = Tensor::unravel_index(i, shape);
-                pred_tensor_gradients[i] += compute_b(indices, shape, current_gradients, a);
+                pred_tensor_gradients[i] += compute_b(indices, current_gradients, a);
             }
         };
         std::vector<float> grad_a;
