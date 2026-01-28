@@ -361,7 +361,7 @@ public:
             grad_b = grad_initializer();
         }
         result->add_predecessor(b, grad_b, b->requires_grad(), grad_initializer, update_function_b);
-        result->forward_function_ = [a_weak = std::weak_ptr<Tensor>(a), b_weak = std::weak_ptr<Tensor>(b), contractions, result_shape, helper](
+        result->forward_function_ = [a_weak = std::weak_ptr<Tensor>(a), b_weak = std::weak_ptr<Tensor>(b), contractions, result_shape](
             std::vector<float>& values,
             const std::vector<Predecessor>& preds
         ) -> void {
@@ -376,9 +376,263 @@ public:
                     throw std::invalid_argument("(Ops::tensor_product) Contraction dimensions must match.");
                 }
             }
+            std::function<float(const std::vector<std::size_t>&)> helper = [a, b, contraction_dims](const std::vector<std::size_t>& indices) -> float {
+                float sum = 0.0f;
+                std::vector<std::size_t> a_indices = std::vector<std::size_t>(indices.begin(), indices.begin() + a->ndim() - contraction_dims.size());
+                std::vector<std::size_t> b_indices = std::vector<std::size_t>(indices.begin() + a->ndim() - contraction_dims.size(), indices.end());
+                std::vector<std::size_t> k_indices(contraction_dims.size(), 0);
+                bool done = false;
+                while (!done) {
+                    std::vector<std::size_t> full_a_indices = a_indices;
+                    full_a_indices.append_range(k_indices);
+                    std::vector<std::size_t> full_b_indices = k_indices;
+                    full_b_indices.append_range(b_indices);
+                    sum += a->operator()(full_a_indices) * b->operator()(full_b_indices);
+                    for (int d = contraction_dims.size() - 1; d >= 0; d--) {
+                        k_indices[d]++;
+                        if (k_indices[d] < contraction_dims[d]) {
+                            break;
+                        } else if (d == 0) {
+                            done = true;
+                        } else {
+                            k_indices[d] = 0;
+                        }
+                    }
+                }
+                return sum;
+            };
             for (std::size_t i = 0; i < values.size(); i++) {
                 std::vector<std::size_t> indices = Tensor::unravel_index(i, result_shape);
                 values[i] = helper(indices);
+            }
+        };
+        return result;
+    }
+
+    enum class PaddingMode {
+        SAME,
+        VALID
+    };
+    enum class PaddingFill {
+        ZERO,
+        REPLICATE
+    };
+    static std::shared_ptr<Tensor> convolution_2d(
+        std::shared_ptr<Tensor> input,
+        std::shared_ptr<Tensor> kernel,
+        std::size_t stride = 1,
+        PaddingMode padding_mode = PaddingMode::SAME,
+        PaddingFill padding_fill = PaddingFill::ZERO
+    ) {
+        if (input->ndim() != 2 && input->ndim() != 3) {
+            throw std::invalid_argument("(Ops::convolution_2d) Input tensor must be 2D or 3D (list of 2D).");
+        }
+        if (kernel->ndim() != 2) {
+            throw std::invalid_argument("(Ops::convolution_2d) Kernel tensor must be 2D.");
+        }
+        if (stride == 0) {
+            throw std::invalid_argument("(Ops::convolution_2d) Stride must be a positive integer.");
+        }
+        const std::size_t input_height = input->shape()[input->ndim() - 2];
+        const std::size_t input_width = input->shape()[input->ndim() - 1];
+        // Calulate output dimensions based on padding
+        std::vector<std::size_t> output_shape(input->shape());
+        std::size_t pad_height = 0;
+        std::size_t pad_width = 0;
+        if (padding_mode == PaddingMode::SAME) {
+            pad_height = (kernel->shape()[0] - 1) / 2;
+            pad_width = (kernel->shape()[1] - 1) / 2;
+        }
+        auto calculate_output_dim = [](
+            std::size_t input_size,
+            std::size_t kernel_size,
+            std::size_t padding,
+            std::size_t stride
+        ) -> std::size_t {
+            return (input_size + 2 * padding - kernel_size + stride) / stride;
+        };
+        output_shape[output_shape.size() - 2] = calculate_output_dim(input_height, kernel->shape()[0], pad_height, stride);
+        output_shape[output_shape.size() - 1] = calculate_output_dim(input_width, kernel->shape()[1], pad_width, stride);
+        std::shared_ptr<Tensor> result = std::make_shared<Tensor>(output_shape, 0.0f, input->requires_grad() || kernel->requires_grad());
+        std::function<float(std::size_t, std::size_t)> get_padded_value;
+        switch (padding_fill) {
+            case PaddingFill::ZERO:
+                get_padded_value = [input, pad_height, pad_width, input_height, input_width](std::size_t i, std::size_t j) -> float {
+                    if (i < pad_height || j < pad_width || i >= input_height + pad_height || j >= input_width + pad_width) {
+                        return 0.0f;
+                    }
+                    return input->operator()({i - pad_height, j - pad_width});
+                };
+                break;
+            case PaddingFill::REPLICATE:
+                get_padded_value = [input, pad_height, pad_width, input_height, input_width](std::size_t i, std::size_t j) -> float {
+                    std::size_t clamped_i = std::min(std::max(i, pad_height), input_height + pad_height - 1) - pad_height;
+                    std::size_t clamped_j = std::min(std::max(j, pad_width), input_width + pad_width - 1) - pad_width;
+                    return input->operator()({clamped_i, clamped_j});
+                };
+                break;
+            default:
+                throw std::invalid_argument("(Ops::convolution_2d) Invalid padding fill mode.");
+        }
+        auto convolve = [get_padded_value, kernel, stride](std::size_t out_i, std::size_t out_j) -> float {
+            float sum = 0.0f;
+            for (std::size_t k_i = 0; k_i < kernel->shape()[0]; k_i++) {
+                for (std::size_t k_j = 0; k_j < kernel->shape()[1]; k_j++) {
+                    const std::size_t in_i = out_i * stride + k_i;
+                    const std::size_t in_j = out_j * stride + k_j;
+                    sum += get_padded_value(in_i, in_j) * kernel->operator()({k_i, k_j});
+                }
+            }
+            return sum;
+        };
+        for (std::size_t i = 0; i < result->shape()[result->shape().size() - 2]; i++) {
+            for (std::size_t j = 0; j < result->shape()[result->shape().size() - 1]; j++) {
+                result->values_[Tensor::ravel_index({i, j}, result->shape())] = convolve(i, j);
+            }
+        }
+        // gradients aren't stored in predessor struct
+        std::function<std::vector<float>()> grad_initializer = []() {
+            return std::vector<float>();
+        };
+        std::vector<float> grad_input;
+        if (input->requires_grad()) {
+            grad_input = grad_initializer();
+        }
+        auto update_function_input = [
+            kernel_weak = std::weak_ptr<Tensor>(kernel),
+            input_height,
+            input_width,
+            output_shape
+        ](
+            std::vector<float>& pred_tensor_gradients,
+            const std::vector<float>& current_gradients,
+            const std::vector<float>& pred_struct_gradients
+        ) -> void {
+            // pred_tensor_gradients += convolution backpropagation w.r.t. input
+            // (full convolution of current_gradients with 180 rotated kernel)
+            std::shared_ptr<Tensor> kernel = kernel_weak.lock();
+            if (!kernel) {
+                throw std::runtime_error("(Ops::convolution_2d) Predecessor tensor has been deallocated.");
+            }
+            auto rotate_180 = [](const std::shared_ptr<Tensor>& kernel) -> std::shared_ptr<Tensor> {
+                std::shared_ptr<Tensor> rotated = std::make_shared<Tensor>(kernel->shape(), 0.0f, false);
+                for (std::size_t i = 0; i < kernel->shape()[0]; i++) {
+                    for (std::size_t j = 0; j < kernel->shape()[1]; j++) {
+                        const std::size_t x = kernel->shape()[0] - 1 - i;
+                        const std::size_t y = kernel->shape()[1] - 1 - j;
+                        rotated->values_.at(Tensor::ravel_index({x, y}, kernel->shape())) = kernel->operator()({i, j});
+                    }
+                }
+                return rotated;
+            };
+            std::shared_ptr<Tensor> rotated_kernel = rotate_180(kernel);
+            auto convolve = [output_shape, current_gradients, rotated_kernel](std::size_t in_i, std::size_t in_j) -> float {
+                float sum = 0.0f;
+                const std::size_t output_height = output_shape[output_shape.size() - 2];
+                const std::size_t output_width = output_shape[output_shape.size() - 1];
+                for (std::size_t out_i = 0; out_i < output_height; out_i++) {
+                    for (std::size_t out_j = 0; out_j < output_width; out_j++) {
+                        const std::size_t k_i = in_i + rotated_kernel->shape()[0] - 1 - out_i * 1;
+                        const std::size_t k_j = in_j + rotated_kernel->shape()[1] - 1 - out_j * 1;
+                        if (k_i < rotated_kernel->shape()[0] && k_j < rotated_kernel->shape()[1]) {
+                            sum += current_gradients.at(Tensor::ravel_index({out_i, out_j}, {output_height, output_width})) * rotated_kernel->operator()({k_i, k_j});
+                        }
+                    }
+                }
+                return sum;
+            };
+            for (std::size_t in_i = 0; in_i < input_height; in_i++) {
+                for (std::size_t in_j = 0; in_j < input_width; in_j++) {
+                    pred_tensor_gradients.at(Tensor::ravel_index({in_i, in_j}, {input_height, input_width})) += convolve(in_i, in_j);
+                }
+            }
+        };
+        result->add_predecessor(input, grad_input, input->requires_grad(), grad_initializer, update_function_input);
+        // gradients aren't stored in predecessor struct
+        std::vector<float> grad_kernel;
+        if (kernel->requires_grad()) {
+            grad_kernel = grad_initializer();
+        }
+        auto update_function_kernel = [
+            input_weak = std::weak_ptr<Tensor>(input),
+            kernel_height = kernel->shape()[0],
+            kernel_width = kernel->shape()[1],
+            output_shape, stride
+        ](
+            std::vector<float> &pred_tensor_gradients,
+            const std::vector<float> &current_gradients,
+            const std::vector<float> &pred_struct_gradients
+        ) -> void {
+            // pred_tensor_gradients += convolution backpropagation w.r.t. kernel
+            // (valid convolution of input with current_gradients)
+            std::shared_ptr<Tensor> input = input_weak.lock();
+            if (!input) {
+                throw std::runtime_error("(Ops::convolution_2d) Predecessor tensor has been deallocated.");
+            }
+            auto convolve = [input, output_shape, stride, current_gradients](std::size_t k_i, std::size_t k_j) -> float {
+                float sum = 0.0f;
+                const std::size_t output_height = output_shape[output_shape.size() - 2];
+                const std::size_t output_width = output_shape[output_shape.size() - 1];
+                for (std::size_t out_i = 0; out_i < output_height; out_i++) {
+                    for (std::size_t out_j = 0; out_j < output_width; out_j++) {
+                        const std::size_t in_i = out_i * stride + k_i;
+                        const std::size_t in_j = out_j * stride + k_j;
+                        sum += input->operator()({in_i, in_j}) * current_gradients.at(Tensor::ravel_index({out_i, out_j}, {output_height, output_width}));
+                    }
+                }
+                return sum;
+            };
+            for (std::size_t k_i = 0; k_i < kernel_height; k_i++) {
+                for (std::size_t k_j = 0; k_j < kernel_width; k_j++) {
+                    pred_tensor_gradients[Tensor::ravel_index({k_i, k_j}, {kernel_height, kernel_width})] += convolve(k_i, k_j);
+                }
+            }
+        };
+        result->add_predecessor(kernel, grad_kernel, kernel->requires_grad(), grad_initializer, update_function_kernel);
+        result->forward_function_ = [output_shape, padding_fill, pad_height, pad_width, stride](
+            std::vector<float>& values,
+            const std::vector<Predecessor>& preds
+        ) -> void {
+            const std::shared_ptr<Tensor> input = preds.at(0).tensor.lock();
+            const std::shared_ptr<Tensor> kernel = preds.at(1).tensor.lock();
+            if (!input || !kernel) {
+                throw std::runtime_error("(Ops::convolution_2d) Predecessor tensor has been deallocated.");
+            }
+            std::function<float(std::size_t, std::size_t)> get_padded_value;
+            switch (padding_fill) {
+                case PaddingFill::ZERO:
+                    get_padded_value = [input, pad_height, pad_width](std::size_t i, std::size_t j) -> float {
+                        if (i < pad_height || j < pad_width || i >= input->shape()[0] + pad_height || j >= input->shape()[1] + pad_width) {
+                            return 0.0f;
+                        }
+                        return input->operator()({i - pad_height, j - pad_width});
+                    };
+                    break;
+                case PaddingFill::REPLICATE:
+                    get_padded_value = [input, pad_height, pad_width](std::size_t i, std::size_t j) -> float {
+                        std::size_t clamped_i = std::min(std::max(i, pad_height), input->shape()[0] + pad_height - 1) - pad_height;
+                        std::size_t clamped_j = std::min(std::max(j, pad_width), input->shape()[1] + pad_width - 1) - pad_width;
+                        return input->operator()({clamped_i, clamped_j});
+                    };
+                    break;
+                default:
+                    throw std::invalid_argument("(Ops::convolution_2d) Invalid padding fill mode.");
+            }
+            auto convolve = [get_padded_value, kernel, stride](std::size_t out_i, std::size_t out_j) -> float {
+                float sum = 0.0f;
+                for (std::size_t k_i = 0; k_i < kernel->shape()[0]; k_i++) {
+                    for (std::size_t k_j = 0; k_j < kernel->shape()[1]; k_j++) {
+                        const std::size_t in_i = out_i * stride + k_i;
+                        const std::size_t in_j = out_j * stride + k_j;
+                        sum += get_padded_value(in_i, in_j) * kernel->operator()({k_i, k_j});
+                    }
+                }
+                return sum;
+            };
+            for (std::size_t i = 0; i < output_shape[output_shape.size() - 2]; i++) {
+                for (std::size_t j = 0; j < output_shape[output_shape.size() - 1]; j++) {
+                    values.at(Tensor::ravel_index({i, j}, output_shape)) = convolve(i, j);
+                }
             }
         };
         return result;
