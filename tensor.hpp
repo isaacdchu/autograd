@@ -311,9 +311,7 @@ public:
                 if (tensor->gradients_.size() != tensor->size_) {
                     tensor->gradients_.resize(tensor->size_, 0.0f);
                 }
-                // std::cout << "calling update_function for predecessor tensor: " << pred_tensor->to_string() << std::endl;
                 pred.update_function(pred_tensor->gradients_, tensor->gradients(), pred.gradients);
-                // std::cout << "success" << std::endl;
             }
         }
     }

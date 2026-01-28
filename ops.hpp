@@ -409,10 +409,6 @@ public:
         return result;
     }
 
-    enum class PaddingMode {
-        SAME,
-        VALID
-    };
     enum class PaddingFill {
         ZERO,
         REPLICATE
@@ -421,7 +417,6 @@ public:
         std::shared_ptr<Tensor> input,
         std::shared_ptr<Tensor> kernel,
         std::size_t stride = 1,
-        PaddingMode padding_mode = PaddingMode::SAME,
         PaddingFill padding_fill = PaddingFill::ZERO
     ) {
         if (input->ndim() != 2 && input->ndim() != 3) {
@@ -435,24 +430,10 @@ public:
         }
         const std::size_t input_height = input->shape()[input->ndim() - 2];
         const std::size_t input_width = input->shape()[input->ndim() - 1];
-        // Calulate output dimensions based on padding
         std::vector<std::size_t> output_shape(input->shape());
-        std::size_t pad_height = 0;
-        std::size_t pad_width = 0;
-        if (padding_mode == PaddingMode::SAME) {
-            pad_height = (kernel->shape()[0] - 1) / 2;
-            pad_width = (kernel->shape()[1] - 1) / 2;
-        }
-        auto calculate_output_dim = [](
-            std::size_t input_size,
-            std::size_t kernel_size,
-            std::size_t padding,
-            std::size_t stride
-        ) -> std::size_t {
-            return (input_size + 2 * padding - kernel_size + stride) / stride;
-        };
-        output_shape[output_shape.size() - 2] = calculate_output_dim(input_height, kernel->shape()[0], pad_height, stride);
-        output_shape[output_shape.size() - 1] = calculate_output_dim(input_width, kernel->shape()[1], pad_width, stride);
+        const std::size_t pad_height = (kernel->shape()[0] - 1) / 2;
+        const std::size_t pad_width = (kernel->shape()[1] - 1) / 2;
+        // make result tensor
         std::shared_ptr<Tensor> result = std::make_shared<Tensor>(output_shape, 0.0f, input->requires_grad() || kernel->requires_grad());
         std::function<float(std::size_t, std::size_t)> get_padded_value;
         switch (padding_fill) {
@@ -557,7 +538,13 @@ public:
             input_weak = std::weak_ptr<Tensor>(input),
             kernel_height = kernel->shape()[0],
             kernel_width = kernel->shape()[1],
-            output_shape, stride
+            padding_fill,
+            pad_height,
+            pad_width,
+            input_height,
+            input_width,
+            output_shape,
+            stride
         ](
             std::vector<float> &pred_tensor_gradients,
             const std::vector<float> &current_gradients,
@@ -569,7 +556,27 @@ public:
             if (!input) {
                 throw std::runtime_error("(Ops::convolution_2d) Predecessor tensor has been deallocated.");
             }
-            auto convolve = [input, output_shape, stride, current_gradients](std::size_t k_i, std::size_t k_j) -> float {
+            std::function<float(std::size_t, std::size_t)> get_padded_value;
+            switch (padding_fill) {
+                case PaddingFill::ZERO:
+                    get_padded_value = [input, pad_height, pad_width, input_height, input_width](std::size_t i, std::size_t j) -> float {
+                        if (i < pad_height || j < pad_width || i >= input_height + pad_height || j >= input_width + pad_width) {
+                            return 0.0f;
+                        }
+                        return input->operator()({i - pad_height, j - pad_width});
+                    };
+                    break;
+                case PaddingFill::REPLICATE:
+                    get_padded_value = [input, pad_height, pad_width, input_height, input_width](std::size_t i, std::size_t j) -> float {
+                        std::size_t clamped_i = std::min(std::max(i, pad_height), input_height + pad_height - 1) - pad_height;
+                        std::size_t clamped_j = std::min(std::max(j, pad_width), input_width + pad_width - 1) - pad_width;
+                        return input->operator()({clamped_i, clamped_j});
+                    };
+                    break;
+                default:
+                    throw std::invalid_argument("(Ops::convolution_2d) Invalid padding fill mode.");
+            }
+            auto convolve = [output_shape, stride, current_gradients, get_padded_value](std::size_t k_i, std::size_t k_j) -> float {
                 float sum = 0.0f;
                 const std::size_t output_height = output_shape[output_shape.size() - 2];
                 const std::size_t output_width = output_shape[output_shape.size() - 1];
@@ -577,14 +584,14 @@ public:
                     for (std::size_t out_j = 0; out_j < output_width; out_j++) {
                         const std::size_t in_i = out_i * stride + k_i;
                         const std::size_t in_j = out_j * stride + k_j;
-                        sum += input->operator()({in_i, in_j}) * current_gradients.at(Tensor::ravel_index({out_i, out_j}, {output_height, output_width}));
+                        sum += get_padded_value(in_i, in_j) * current_gradients.at(Tensor::ravel_index({out_i, out_j}, {output_height, output_width}));
                     }
                 }
                 return sum;
             };
             for (std::size_t k_i = 0; k_i < kernel_height; k_i++) {
                 for (std::size_t k_j = 0; k_j < kernel_width; k_j++) {
-                    pred_tensor_gradients[Tensor::ravel_index({k_i, k_j}, {kernel_height, kernel_width})] += convolve(k_i, k_j);
+                    pred_tensor_gradients.at(Tensor::ravel_index({k_i, k_j}, {kernel_height, kernel_width})) += convolve(k_i, k_j);
                 }
             }
         };
