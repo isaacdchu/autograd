@@ -14,8 +14,8 @@
 
 int main() {
     std::shared_ptr<Tensor> tensor_a1 = std::make_shared<Tensor>(std::vector<std::size_t>{8, 8}, 1.0f, true);
-    std::shared_ptr<Tensor> tensor_b1 = std::make_shared<Tensor>(std::vector<std::size_t>{3, 3}, 2.0f, true);
-    std::shared_ptr<Tensor> tensor_c1 = Ops::convolution_2d(tensor_a1, tensor_b1, 1, Ops::PaddingFill::REPLICATE);
+    std::shared_ptr<Tensor> tensor_b1 = std::make_shared<Tensor>(std::vector<std::size_t>{5, 5}, 2.0f, true);
+    std::shared_ptr<Tensor> tensor_c1 = Ops::convolution_2d(tensor_a1, tensor_b1, 1, Ops::PaddingFill::ZERO);
     tensor_c1->forward();
     tensor_c1->set_gradients(std::vector<float>(tensor_c1->size(), 1.0f));
     std::cout << "performing backward pass..." << std::endl;

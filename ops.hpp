@@ -419,8 +419,8 @@ public:
         std::size_t stride = 1,
         PaddingFill padding_fill = PaddingFill::ZERO
     ) {
-        if (input->ndim() != 2 && input->ndim() != 3) {
-            throw std::invalid_argument("(Ops::convolution_2d) Input tensor must be 2D or 3D (list of 2D).");
+        if (input->ndim() != 2) {
+            throw std::invalid_argument("(Ops::convolution_2d) Input tensor must be 2D.");
         }
         if (kernel->ndim() != 2) {
             throw std::invalid_argument("(Ops::convolution_2d) Kernel tensor must be 2D.");
