@@ -5,6 +5,8 @@
 #include "sgd.hpp"
 #include "adam.hpp"
 #include "layer.hpp"
+#include "dense_layer.hpp"
+#include "loss_layer.hpp"
 #include "model.hpp"
 
 #include <iostream>
@@ -13,15 +15,40 @@
 #include <cstddef>
 
 int main() {
-    std::shared_ptr<Tensor> tensor_a1 = std::make_shared<Tensor>(std::vector<std::size_t>{8, 8}, 1.0f, true);
-    std::shared_ptr<Tensor> tensor_b1 = std::make_shared<Tensor>(std::vector<std::size_t>{5, 5}, 2.0f, true);
-    std::shared_ptr<Tensor> tensor_c1 = Ops::convolution_2d(tensor_a1, tensor_b1, 1, Ops::PaddingFill::ZERO);
-    tensor_c1->forward();
-    tensor_c1->set_gradients(std::vector<float>(tensor_c1->size(), 1.0f));
-    std::cout << "performing backward pass..." << std::endl;
-    tensor_c1->backward();
-    std::cout << "Tensor A1: " << tensor_a1->to_string() << std::endl;
-    std::cout << "Tensor B1: " << tensor_b1->to_string() << std::endl;
-    std::cout << "Tensor C1: " << tensor_c1->to_string() << std::endl;
+    auto model = Model({
+        std::make_shared<DenseLayer>(2, 3),
+        std::make_shared<DenseLayer>(3, 1)
+    }, std::make_shared<LossLayer>(1, Loss::mse));
+    auto optimizer = SGD(model.parameters(), 0.01f);
+    std::vector<std::shared_ptr<Tensor>> inputs = {
+        std::make_shared<Tensor>(std::vector<std::size_t>{1, 2}, std::vector<float>{1.0f, 2.0f}, true),
+        std::make_shared<Tensor>(std::vector<std::size_t>{1, 2}, std::vector<float>{3.0f, 4.0f}, true)
+    };
+    // optimizer.zero_grad();
+    auto outputs = model.forward(inputs);
+    for (const auto& output : outputs) {
+        std::cout << "Output: ";
+        for (float value : output->values()) {
+            std::cout << value << " ";
+        }
+        std::cout << std::endl;
+    }
+    std::vector<std::shared_ptr<Tensor>> labels = {
+        std::make_shared<Tensor>(std::vector<std::size_t>{1, 1}, std::vector<float>{3.0f}, true),
+        std::make_shared<Tensor>(std::vector<std::size_t>{1, 1}, std::vector<float>{2.0f}, true)
+    };
+    model.backward(labels);
+    optimizer.step();
+    for (const auto& param : model.parameters()) {
+        std::cout << param->to_string() << std::endl;
+    }
+    outputs = model.forward(inputs);
+    for (const auto& output : outputs) {
+        std::cout << "Output: ";
+        for (float value : output->values()) {
+            std::cout << value << " ";
+        }
+        std::cout << std::endl;
+    }
     return 0;
 }
